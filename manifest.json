@@ -3,7 +3,7 @@
   "name": "AI Conversation Sync",
   "version": "1.0",
   "description": "Sync ChatGPT & Claude conversations to your Hermes Topic Dashboard",
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "tabs"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://claude.ai/*",
