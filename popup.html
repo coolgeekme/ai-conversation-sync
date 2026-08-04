@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #131315;
+      color: #e4e2e4;
+    }
+    h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { font-size: 11px; color: #8e9192; margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; }
+    
+    .platform { 
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; margin-bottom: 6px; border-radius: 8px;
+      background: #1b1b1d; border: 1px solid rgba(68,71,72,0.3);
+    }
+    .platform-name { font-size: 13px; font-weight: 500; }
+    .platform-count { font-size: 11px; color: #8e9192; font-family: 'JetBrains Mono', monospace; }
+    .platform-status { font-size: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+    
+    button {
+      width: 100%; padding: 12px; margin-top: 12px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+      background: white; color: #131315;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    .status { margin-top: 10px; font-size: 11px; text-align: center; color: #8e9192; font-family: 'JetBrains Mono', monospace; }
+    .error { color: #ffb4ab; }
+    .success { color: #70ff76; }
+
+    .config { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(68,71,72,0.3); }
+    .config label { font-size: 10px; color: #8e9192; font-family: 'JetBrains Mono', monospace; display: block; margin-bottom: 4px; }
+    .config input {
+      width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(68,71,72,0.5);
+      background: #1b1b1d; color: #e4e2e4; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 8px;
+    }
+    .config input:focus { outline: none; border-color: #8e9192; }
+  </style>
+</head>
+<body>
+  <h1>AI Conversation Sync</h1>
+  <p class="subtitle">SYNC ALL PLATFORMS</p>
+  
+  <div id="platforms">
+    <div class="platform"><span><span class="dot" style="background:#3e90ff"></span><span class="platform-name">ChatGPT</span></span><span class="platform-count" id="chatgpt-count">--</span></div>
+    <div class="platform"><span><span class="dot" style="background:#D4A373"></span><span class="platform-name">Claude.ai</span></span><span class="platform-count" id="claude-count">--</span></div>
+  </div>
+  
+  <button id="sync-btn">Sync All Conversations</button>
+  <div class="status" id="status"></div>
+  
+  <div class="config">
+    <label>GITHUB TOKEN (create at github.com/settings/tokens)</label>
+    <input type="password" id="github-token" placeholder="ghp_...">
+    <label>GITHUB REPO</label>
+    <input type="text" id="github-repo" value="coolgeekme/hermes-topic-dashboard" placeholder="user/repo">
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
