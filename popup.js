@@ -1,53 +1,66 @@
-// Popup UI logic
+// Popup UI — zero-config sync to Vercel API
 
+const API_BASE = 'https://hermes-topic-dashboard.vercel.app/api'
 const status = document.getElementById('status')
 const syncBtn = document.getElementById('sync-btn')
+const dashLink = document.getElementById('dashboard-link')
 
-// Load saved config
-chrome.storage.local.get(['githubToken', 'githubRepo'], (data) => {
-  if (data.githubToken) document.getElementById('github-token').value = data.githubToken
-  if (data.githubRepo) document.getElementById('github-repo').value = data.githubRepo
-})
+// Generate or load a persistent user ID on first run
+async function getUserId() {
+  const stored = await chrome.storage.local.get('userId')
+  if (stored.userId) return stored.userId
+  
+  // Generate a random 12-char ID
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+  await chrome.storage.local.set({ userId: id })
+  return id
+}
 
-// Save config on input
-document.getElementById('github-token').addEventListener('change', (e) => {
-  chrome.storage.local.set({ githubToken: e.target.value })
-})
-document.getElementById('github-repo').addEventListener('change', (e) => {
-  chrome.storage.local.set({ githubRepo: e.target.value })
+// Update dashboard link with user ID
+getUserId().then(userId => {
+  dashLink.href = `https://hermes-topic-dashboard.vercel.app?user=${userId}`
 })
 
 syncBtn.addEventListener('click', async () => {
-  const token = document.getElementById('github-token').value.trim()
-  const repo = document.getElementById('github-repo').value.trim()
-  
-  if (!token || !repo) {
-    setStatus('Enter your GitHub token and repo first', 'error')
-    return
-  }
-
   syncBtn.disabled = true
   setStatus('Syncing...', '')
 
+  const userId = await getUserId()
   const platforms = [
-    { id: 'chatgpt', url: 'https://chatgpt.com', file: 'public/chatgpt_sessions.tar.gz' },
-    { id: 'claude', url: 'https://claude.ai', file: 'public/claude_web_sessions.tar.gz' },
+    { id: 'chatgpt', url: 'https://chatgpt.com', platform: 'chatgpt-web' },
+    { id: 'claude', url: 'https://claude.ai', platform: 'claude-web' },
   ]
 
   let success = 0
+  let totalSessions = 0
   let errors = []
 
   for (const platform of platforms) {
     try {
       updateCount(platform.id, '...')
       const data = await extractFromTab(platform)
+      
       if (data && data.sessions && data.sessions.length > 0) {
-        await pushToGitHub(token, repo, platform.file, data)
-        updateCount(platform.id, `${data.sessions.length} chats · ${data.total_messages} msgs`)
+        // Upload to Vercel API
+        const res = await fetch(`${API_BASE}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            platform: platform.platform,
+            sessions: data.sessions,
+          })
+        })
+        
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+        
+        updateCount(platform.id, `${data.sessions.length} chats`)
         success++
+        totalSessions += data.sessions.length
       } else {
         updateCount(platform.id, '0 found')
-        errors.push(`${platform.id}: no conversations found`)
+        errors.push(`${platform.id}: no conversations — log in first`)
       }
     } catch (e) {
       updateCount(platform.id, 'failed')
@@ -56,13 +69,16 @@ syncBtn.addEventListener('click', async () => {
   }
 
   syncBtn.disabled = false
+  
   if (errors.length === 0) {
-    setStatus(`Synced ${success} platforms. Dashboard updates in ~30s.`, 'success')
+    setStatus(`Synced ${totalSessions} conversations. Rebuilding...`, 'success')
+    // Trigger rebuild
+    await fetch(`${API_BASE}/rebuild?userId=${userId}`, { method: 'POST' }).catch(() => {})
+    setStatus(`Done! ${totalSessions} conversations synced.`, 'success')
   } else if (success > 0) {
-    setStatus(`Partial sync: ${success} OK, ${errors.length} failed`, '')
-    console.error(errors)
+    setStatus(`Partial: ${success} OK. Open ChatGPT/Claude tabs first.`, '')
   } else {
-    setStatus(errors.join(' | '), 'error')
+    setStatus('Open ChatGPT or Claude.ai in a tab, then try again', 'error')
   }
 })
 
@@ -77,104 +93,68 @@ function setStatus(msg, cls) {
 }
 
 async function extractFromTab(platform) {
-  // Find or create a tab for this platform
   const tabs = await chrome.tabs.query({ url: `${platform.url}/*` })
   let tabId
-  
+  let shouldClose = false
+
   if (tabs.length > 0) {
     tabId = tabs[0].id
   } else {
+    // Open a new background tab
     const tab = await chrome.tabs.create({ url: platform.url, active: false })
     tabId = tab.id
-    // Wait for page to load
-    await new Promise(r => setTimeout(r, 3000))
+    shouldClose = true
+    // Wait for the page to load
+    await new Promise(r => setTimeout(r, 4000))
   }
 
-  // Execute content script to read IndexedDB
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: extractConversations,
-    world: 'MAIN'  // Need MAIN world to access page's IndexedDB
-  })
-
-  return results[0]?.result
-}
-
-async function pushToGitHub(token, repo, filePath, data) {
-  // Convert to JSON, compress as tar.gz (same as Claude Code exporter)
-  const json = JSON.stringify(data)
-  
-  // Base64 encode the JSON (GitHub API expects base64 content)
-  const base64 = btoa(unescape(encodeURIComponent(json)))
-  
-  // Check if file exists to get SHA
-  let sha = null
   try {
-    const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
-      headers: { Authorization: `token ${token}` }
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: extractConversations,
+      world: 'MAIN'
     })
-    if (getRes.ok) {
-      const info = await getRes.json()
-      sha = info.sha
+    return results[0]?.result
+  } finally {
+    if (shouldClose) {
+      chrome.tabs.remove(tabId).catch(() => {})
     }
-  } catch {}
-
-  // Push to GitHub
-  const body = {
-    message: `data: ${filePath.includes('chatgpt') ? 'ChatGPT' : 'Claude.ai'} web sessions`,
-    content: base64,
-    ...(sha ? { sha } : {})
-  }
-
-  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `token ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body)
-  })
-
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.message || `HTTP ${res.status}`)
   }
 }
 
-// This function runs INSIDE the target page (chatgpt.com or claude.ai)
-// It has full access to the page's IndexedDB
+// Runs inside the target page (chatgpt.com or claude.ai)
+// Has full access to the page's IndexedDB
 function extractConversations() {
   const domain = window.location.hostname
-  
-  return new Promise((resolve, reject) => {
-    // Try to list IndexedDB databases
+
+  return new Promise((resolve) => {
     if (!window.indexedDB || !window.indexedDB.databases) {
-      resolve({ sessions: [], total_messages: 0, error: 'IndexedDB not accessible' })
+      resolve({ sessions: [], error: 'IndexedDB not supported' })
       return
     }
 
     window.indexedDB.databases().then(async (dbs) => {
       const dbNames = dbs.map(d => d.name)
-      let sessions = []
+      let allSessions = []
       let totalMessages = 0
 
       for (const dbName of dbNames) {
         const data = await readDatabase(dbName, domain)
-        if (data) {
-          sessions = sessions.concat(data.sessions)
+        if (data && data.sessions) {
+          allSessions = allSessions.concat(data.sessions)
           totalMessages += data.total_messages
         }
       }
 
       resolve({
-        platform: domain.includes('chatgpt') ? 'chatgpt' : 'claude-ai',
+        platform: domain.includes('chatgpt') ? 'chatgpt-web' : 'claude-web',
         exported_at: new Date().toISOString(),
-        total_sessions: sessions.length,
+        total_sessions: allSessions.length,
         total_messages: totalMessages,
-        sessions: sessions.slice(0, 500), // Limit to avoid huge files
+        sessions: allSessions.slice(0, 1000),
       })
     }).catch(err => {
-      resolve({ sessions: [], total_messages: 0, error: err.message })
+      resolve({ sessions: [], error: err.message })
     })
   })
 
@@ -186,21 +166,10 @@ function extractConversations() {
       request.onsuccess = (event) => {
         if (done) return
         const db = event.target.result
+        const storeNames = Array.from(db.objectStoreNames)
         
         try {
-          const storeNames = Array.from(db.objectStoreNames)
-          
-          // ChatGPT common stores
-          if (storeNames.includes('conversation') || storeNames.includes('history')) {
-            extractFromStores(db, storeNames, domain).then(resolve)
-          }
-          // Claude common stores  
-          else if (storeNames.includes('messages') || storeNames.includes('conversations')) {
-            extractFromStores(db, storeNames, domain).then(resolve)
-          }
-          else {
-            resolve(null)
-          }
+          extractFromStores(db, storeNames, domain).then(resolve)
         } catch(e) {
           resolve(null)
         } finally {
@@ -210,9 +179,7 @@ function extractConversations() {
       }
       
       request.onerror = () => resolve(null)
-      
-      // Timeout after 5 seconds
-      setTimeout(() => { done = true; resolve(null) }, 5000)
+      setTimeout(() => { done = true; resolve(null) }, 8000)
     })
   }
 
@@ -224,7 +191,11 @@ function extractConversations() {
       try {
         const tx = db.transaction(storeName, 'readonly')
         const store = tx.objectStore(storeName)
-        const records = await getAllFromStore(store)
+        const records = await new Promise((resolve, reject) => {
+          const req = store.getAll()
+          req.onsuccess = () => resolve(req.result || [])
+          req.onerror = () => reject(req.error)
+        })
         
         for (const record of records) {
           const session = normalizeRecord(record, storeName, domain)
@@ -233,91 +204,75 @@ function extractConversations() {
             totalMessages += session.message_count || 0
           }
         }
-      } catch(e) {
-        // Skip inaccessible stores
-      }
+      } catch(e) {}
     }
 
     return { sessions, total_messages }
   }
 
-  function getAllFromStore(store) {
-    return new Promise((resolve) => {
-      const request = store.getAll()
-      request.onsuccess = () => resolve(request.result || [])
-      request.onerror = () => resolve([])
-    })
-  }
-
   function normalizeRecord(record, storeName, domain) {
-    // Handle various schemas
-    const id = record.id || record.uuid || record.conversation_id || ''
-    const title = record.title || record.name || record.subject || 'Untitled'
+    const id = String(record.id || record.uuid || record.conversation_id || '')
+    const title = String(record.title || record.name || record.subject || 'Untitled').slice(0, 200)
     
-    // Find messages
     let messages = []
-    let createTime = null
-    let updateTime = null
+    let createTime = record.create_time || record.created_at || null
+    let updateTime = record.update_time || record.updated_at || null
 
-    // ChatGPT conversation format
-    if (record.create_time) createTime = record.create_time
-    if (record.update_time) updateTime = record.update_time
-    if (record.messages) {
-      messages = Array.isArray(record.messages) ? record.messages : []
-    }
-    if (record.mapping) {
-      // ChatGPT's conversation mapping structure
-      const mapping = typeof record.mapping === 'object' ? record.mapping : {}
-      messages = Object.values(mapping)
+    // ChatGPT mapping structure
+    if (record.mapping && typeof record.mapping === 'object') {
+      messages = Object.values(record.mapping)
         .filter(n => n && n.message)
         .map(n => ({
-          role: n.message.author?.role || 'unknown',
-          content: extractContent(n.message.content),
-          timestamp: n.message.create_time
+          role: (n.message.author?.role === 'assistant' || n.message.author?.role === 'tool') ? 'assistant' : 'user',
+          content: extractText(n.message.content),
+          timestamp: n.message.create_time || null
         }))
+        .filter(m => m.content)
+    }
+    
+    // Direct messages array
+    if (record.messages && Array.isArray(record.messages)) {
+      messages = record.messages.map(m => ({
+        role: (m.role === 'assistant' || m.role === 'model' || m.sender === 'assistant') ? 'assistant' : 'user',
+        content: typeof m.content === 'string' ? m.content.slice(0, 4000) : extractText(m.content),
+        timestamp: m.timestamp || m.create_time || m.created_at || null
+      })).filter(m => m.content)
     }
 
-    // Claude conversation format
-    if (record.created_at) createTime = record.created_at
-    if (record.updated_at) updateTime = record.updated_at
-    if (record.chat_messages) {
+    // Claude format
+    if (record.chat_messages && Array.isArray(record.chat_messages)) {
       messages = record.chat_messages.map(m => ({
-        role: m.sender === 'human' ? 'user' : 'assistant',
-        content: m.text || m.content || '',
-        timestamp: m.created_at
-      }))
+        role: (m.sender === 'human' || m.role === 'user') ? 'user' : 'assistant',
+        content: (m.text || m.content || '').slice(0, 4000),
+        timestamp: m.created_at || m.timestamp || null
+      })).filter(m => m.content)
     }
 
-    // Truncate long content, limit messages
-    const limitedMessages = messages.slice(-200).map(m => ({
-      role: m.role === 'assistant' || m.role === 'model' ? 'assistant' : 'user',
-      content: typeof m.content === 'string' ? m.content.slice(0, 4000) : JSON.stringify(m.content).slice(0, 4000),
-      timestamp: m.timestamp || m.create_time || null
-    }))
+    if (messages.length === 0) return null
 
     return {
-      id: String(id),
-      title: String(title).slice(0, 200),
+      id,
+      title,
       platform: domain.includes('chatgpt') ? 'chatgpt-web' : 'claude-web',
       started_at: createTime,
       last_active: updateTime || createTime,
       message_count: messages.length,
-      messages: limitedMessages,
+      messages: messages.slice(-300),
     }
   }
 
-  function extractContent(content) {
+  function extractText(content) {
     if (!content) return ''
     if (typeof content === 'string') return content.slice(0, 4000)
     if (Array.isArray(content)) {
       return content.map(part => {
         if (typeof part === 'string') return part
-        if (part.text) return part.text
+        if (part && part.text) return part.text
         return ''
       }).join(' ').slice(0, 4000)
     }
-    if (content.parts) {
-      return (Array.isArray(content.parts) ? content.parts : []).join(' ').slice(0, 4000)
+    if (content && content.parts && Array.isArray(content.parts)) {
+      return content.parts.join(' ').slice(0, 4000)
     }
     return JSON.stringify(content).slice(0, 4000)
   }

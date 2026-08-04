@@ -5,14 +5,12 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 320px;
-      padding: 20px;
+      width: 300px; padding: 20px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #131315;
-      color: #e4e2e4;
+      background: #131315; color: #e4e2e4;
     }
-    h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-    .subtitle { font-size: 11px; color: #8e9192; margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; }
+    h1 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+    .subtitle { font-size: 10px; color: #8e9192; margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; }
     
     .platform { 
       display: flex; align-items: center; justify-content: space-between;
@@ -21,7 +19,6 @@
     }
     .platform-name { font-size: 13px; font-weight: 500; }
     .platform-count { font-size: 11px; color: #8e9192; font-family: 'JetBrains Mono', monospace; }
-    .platform-status { font-size: 10px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
     
     button {
@@ -35,35 +32,28 @@
     .status { margin-top: 10px; font-size: 11px; text-align: center; color: #8e9192; font-family: 'JetBrains Mono', monospace; }
     .error { color: #ffb4ab; }
     .success { color: #70ff76; }
-
-    .config { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(68,71,72,0.3); }
-    .config label { font-size: 10px; color: #8e9192; font-family: 'JetBrains Mono', monospace; display: block; margin-bottom: 4px; }
-    .config input {
-      width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(68,71,72,0.5);
-      background: #1b1b1d; color: #e4e2e4; font-size: 12px; font-family: 'JetBrains Mono', monospace;
-      margin-bottom: 8px;
+    
+    .dashboard-link {
+      display: block; margin-top: 12px; padding: 8px; text-align: center;
+      font-size: 11px; color: #3e90ff; text-decoration: none;
+      border-radius: 6px; border: 1px solid rgba(62,144,255,0.2);
+      font-family: 'JetBrains Mono', monospace;
     }
-    .config input:focus { outline: none; border-color: #8e9192; }
+    .dashboard-link:hover { background: rgba(62,144,255,0.05); }
   </style>
 </head>
 <body>
-  <h1>AI Conversation Sync</h1>
-  <p class="subtitle">SYNC ALL PLATFORMS</p>
+  <h1>Conversation Sync</h1>
+  <p class="subtitle">NO API KEYS · NO ACCOUNTS</p>
   
   <div id="platforms">
     <div class="platform"><span><span class="dot" style="background:#3e90ff"></span><span class="platform-name">ChatGPT</span></span><span class="platform-count" id="chatgpt-count">--</span></div>
     <div class="platform"><span><span class="dot" style="background:#D4A373"></span><span class="platform-name">Claude.ai</span></span><span class="platform-count" id="claude-count">--</span></div>
   </div>
   
-  <button id="sync-btn">Sync All Conversations</button>
+  <button id="sync-btn">Sync Conversations</button>
   <div class="status" id="status"></div>
-  
-  <div class="config">
-    <label>GITHUB TOKEN (create at github.com/settings/tokens)</label>
-    <input type="password" id="github-token" placeholder="ghp_...">
-    <label>GITHUB REPO</label>
-    <input type="text" id="github-repo" value="coolgeekme/hermes-topic-dashboard" placeholder="user/repo">
-  </div>
+  <a class="dashboard-link" id="dashboard-link" href="#" target="_blank">Open Dashboard →</a>
 
   <script src="popup.js"></script>
 </body>
