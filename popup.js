@@ -94,9 +94,9 @@ async function extractFromTab(platform) {
   if (tabs.length > 0) {
     tabId = tabs[0].id
   } else {
-    const tab = await chrome.tabs.create({ url: platform.url, active: false })
+    const tab = await chrome.tabs.create({ url: platform.url, active: true })
     tabId = tab.id; shouldClose = true
-    await new Promise(r => setTimeout(r, 4000))
+    await new Promise(r => setTimeout(r, 6000))
   }
 
   try {
@@ -105,7 +105,14 @@ async function extractFromTab(platform) {
       func: extractConversations,
       world: 'MAIN'
     })
-    return results[0]?.result
+    const result = results[0]?.result
+    console.log('Extraction result:', JSON.stringify({ 
+      platform: platform.id, 
+      sessionCount: result?.sessions?.length,
+      error: result?.error,
+      firstFew: result?.sessions?.slice(0, 2)?.map(s => s.title)
+    }))
+    return result
   } finally {
     if (shouldClose) chrome.tabs.remove(tabId).catch(() => {})
   }
