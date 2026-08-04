@@ -6,9 +6,25 @@ const status = document.getElementById('status')
 const syncBtn = document.getElementById('sync-btn')
 const dashLink = document.getElementById('dashboard-link')
 
+// Generate or load persistent user ID
+async function getUserId() {
+  const { userId } = await chrome.storage.local.get('userId')
+  if (userId) return userId
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+  await chrome.storage.local.set({ userId: id })
+  return id
+}
+
+// Update dashboard link
+getUserId().then(id => {
+  dashLink.href = `https://hermes-topic-dashboard.vercel.app?user=${id}`
+})
+
 syncBtn.addEventListener('click', async () => {
   syncBtn.disabled = true
   setStatus('Syncing...', '')
+  const userId = await getUserId()
 
   const platforms = [
     { id: 'chatgpt', url: 'https://chatgpt.com', platform: 'chatgpt-web' },
@@ -29,8 +45,9 @@ syncBtn.addEventListener('click', async () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            platform: platform.platform,
-            sessions: data.sessions,
+          platform: platform.platform,
+          userId: userId,
+          sessions: data.sessions,
           })
         })
         
