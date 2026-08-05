@@ -1,7 +1,8 @@
 // Popup UI — incremental sync for ChatGPT & Claude
 // First sync: slow (scans all). After: lightning fast (delta only).
 
-const API_BASE = 'https://hermes-topic-dashboard.vercel.app/api/upload'
+const API_BASE = 'http://76.13.107.20:8080/api/upload'
+const DASHBOARD_URL = 'http://76.13.107.20:8080'
 const status = document.getElementById('status')
 const syncBtn = document.getElementById('sync-btn')
 const dashLink = document.getElementById('dashboard-link')
@@ -24,7 +25,7 @@ async function getUserId() {
 }
 
 getUserId().then(id => {
-  dashLink.href = `https://hermes-topic-dashboard.vercel.app?user=${id}`
+  dashLink.href = `${DASHBOARD_URL}?user=${id}`
 })
 
 syncBtn.addEventListener('click', async () => {
